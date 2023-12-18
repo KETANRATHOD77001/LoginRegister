@@ -1,0 +1,462 @@
+npm init -y
+npm i express cors nodemon mongoose dotenv bcrypt concurrently
+
+server.js 			#paste code
+.env				#paste code
+config 		=> db.js 	#paste code
+model 		=> user.js 	#paste code
+controller 	=> authController.js 	#paste code
+helper 		=> authHelper.js	#paste code
+route		=> authRoute.js		#paste code
+
+
+change script in root
+----------------------
+  "scripts": {
+    "start": "node server.js",
+    "start-watch": "nodemon server.js",
+    "dev": "concurrently \"npm run start-watch\" \"cd client && npm start\""
+  },
+
+
+npx create-react-app client
+cd client 
+npm i axios react-router-dom
+
+App.js 		#paste code
+App.css		#paste code
+components 	=> Homepage.js		#paste code
+components	=> Login.js		#paste code
+components	=> Register.js		#paste code
+
+npm run dev
+
+
+--server.js----------------------------------------------------------------------------------------------
+
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+
+import connectDB from './config/db.js';
+import authRoutes from './route/authRoute.js';
+
+const app = express();
+app.use(express.json());
+app.use(cors());
+dotenv.config();
+
+connectDB();
+
+app.use("/api/auth", authRoutes);
+
+const PORT = process.env.PORT;
+app.listen(PORT, () => {
+    console.log(`Server is running at http://localhost:${PORT}`);
+});
+
+--.env----------------------------------------------------------------------------------------------
+
+MONGO_URL = mongodb://127.0.0.1:27017/AUTH
+PORT = 8080
+
+--db.js----------------------------------------------------------------------------------------------
+
+import mongoose from 'mongoose';
+const connectDB = async () => {
+    try {
+        const conn = await mongoose.connect(process.env.MONGO_URL);
+        console.log(`Connected to mongodb database ${conn.connection.host}`);
+    } catch (error) {
+        console.log(`Error in Mongodb ${error}`);
+    }
+};
+
+export default connectDB;
+
+--user.js----------------------------------------------------------------------------------------------
+
+import mongoose from 'mongoose';
+// Create schema for todo
+const User = new mongoose.Schema({
+    name: {
+        type: String,
+        required: [true, 'Name required'],
+    },
+    email: {
+        type: String,
+        required: [true, 'Email required'],
+    },
+    password: {
+        type: String,
+        required: [true, 'Password required']
+    },
+});
+
+// Create model for todo
+const UserModel = mongoose.model('users', User);
+export default UserModel;
+
+--controller.js----------------------------------------------------------------------------------------------
+
+import UserModel from "../model/user.js";
+import { hashPassword, comparePassword } from "../helper/authHelper.js";
+
+export const registerController = async (req, res) => {
+    try {
+        const { name, email, password } = req.body;
+        //validations
+        if (!name) {
+            return res.send({ message: "Name is Required" });
+        }
+        if (!email) {
+            return res.send({ message: "Email is Required" });
+        }
+        if (!password) {
+            return res.send({ message: "Password is Required" });
+        }
+
+        //check user
+        const exisitingUser = await UserModel.findOne({ email });
+        //exisiting user
+        if (exisitingUser) {
+            return res.status(200).send({
+                success: false,
+                message: "Already Register please login",
+            });
+        }
+        //register user
+        const hashedPassword = await hashPassword(password);
+        console.log(name);
+        //save
+        const user = await new UserModel({
+            name,
+            email,
+            password: hashedPassword,
+        }).save();
+
+        res.status(201).send({
+            success: true,
+            message: "User Register Successfully",
+            user,
+        });
+    } catch (error) {
+        console.log(error);
+        res.status(500).send({
+            success: false,
+            message: "Errro in Registeration",
+            error,
+        });
+    }
+};
+
+
+export const loginController = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        //validation
+        if (!email || !password) {
+            return res.status(404).send({
+                success: false,
+                message: "Invalid email or password",
+            });
+        }
+        //check user
+        const user = await UserModel.findOne({ email });
+        if (!user) {
+            return res.status(404).send({
+                success: false,
+                message: "Email is not registerd",
+            });
+        }
+
+        const match = await comparePassword(password, user.password);
+        if (!match) {
+            return res.status(200).send({
+                success: false,
+                message: "Invalid Password",
+            });
+        }
+        res.status(200).send({
+            success: true,
+            message: "login successfully",
+            user: {
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+            },
+        });
+    } catch (error) {
+        console.log(error);
+        res.status(500).send({
+            success: false,
+            message: "Error in login",
+            error,
+        });
+    }
+};
+
+--authHelper.js----------------------------------------------------------------------------------------------
+
+import bcrypt from "bcrypt";
+
+export const hashPassword = async (password) => {
+    try {
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+        return hashedPassword;
+    } catch (error) {
+        console.log(error);
+    }
+};
+
+export const comparePassword = async (password, hashedPassword) => {
+    return bcrypt.compare(password, hashedPassword);
+};
+
+
+--authRoute.js----------------------------------------------------------------------------------------------
+
+import express from "express";
+import { registerController, loginController } from "../controller/authController.js";
+
+const router = express.Router();
+
+//REGISTER 
+router.post("/register", registerController);
+
+//LOGIN 
+router.post("/login", loginController);
+
+export default router;
+
+--App.js----------------------------------------------------------------------------------------------
+
+import './App.css';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import Login from './components/Login';
+import Register from './components/Register';
+import HomePage from './components/HomePage';
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" Component={HomePage} />
+        <Route path='/login' Component={Login} />
+        <Route path='/register' Component={Register} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+export default App;
+
+--App.css----------------------------------------------------------------------------------------------
+
+body {
+  font-family: 'Arial', sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #f8f8f8;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+div {
+  background-color: #fff;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  padding: 20px;
+  margin: 20px;
+  width: 300px;
+}
+
+h2 {
+  color: #2c3e50;
+  text-align: center;
+}
+
+form {
+  margin-top: 20px;
+}
+
+label {
+  display: block;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+input {
+  width: 90%;
+  padding: 10px;
+  border: 1px solid #3498db;
+  border-radius: 6px;
+}
+
+input:focus {
+  border-color: #1abc9c;
+}
+
+button {
+  width: 100%;
+  background-color: #27ae60;
+  color: white;
+  padding: 12px;
+  border: none;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+button:hover {
+  background-color: #218c53;
+}
+
+p {
+  margin-top: 15px;
+  color: #7f8c8d;
+}
+
+a {
+  color: #3498db;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+--HomePage.js----------------------------------------------------------------------------------------------
+
+import React from 'react'
+import { Link } from 'react-router-dom';
+
+function HomePage() {
+    return (
+        <>
+            <h2>Welcome to the Front Page!</h2>
+            <p>
+                Check out our services and get started:
+                <ul>
+                    <li>
+                        <Link to="/login">Login</Link>
+                    </li>
+                    <li>
+                        <Link to="/register">Register</Link>
+                    </li>
+                </ul>
+            </p>
+        </>
+    );
+}
+
+export default HomePage
+
+--Login.js----------------------------------------------------------------------------------------------
+
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import axios from 'axios';
+
+
+function Login() {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+
+    const handleLogin = async (e) => {
+        e.preventDefault();
+        try {
+            const response = await axios.post('http://localhost:8080/api/auth/login', {
+                email,
+                password,
+            });
+            // Handle successful login (e.g., set authentication token)
+            window.alert(response.data.user.name);
+        } catch (error) {
+            // Handle login error
+            console.error('Login error:', error.response.data.message);
+        }
+    };
+
+    return (
+        <>
+            <h2>Login</h2>
+            <form onSubmit={handleLogin}>
+                <label>Email:
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                </label>
+                <br />
+                <label>Password:
+                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                </label>
+                <br />
+                <button type="submit">Login</button>
+            </form>
+            <p>
+                Don't have an account? <Link to="/register">Register here</Link>.
+            </p>
+        </>
+    );
+}
+
+export default Login
+
+--Register.js----------------------------------------------------------------------------------------------
+
+import React, { useState } from 'react'
+import { Link } from 'react-router-dom'
+import axios from 'axios';
+
+function Register() {
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+
+    const handleRegister = async (e) => {
+        e.preventDefault();
+
+        try {
+            const response = await axios.post('http://localhost:8080/api/auth/register', {
+                name,
+                email,
+                password,
+            });
+
+            // Handle successful registration (e.g., navigate to login page)
+            window.alert(response.data.message);
+        } catch (error) {
+            // Handle registration error
+            console.error('Registration error:', error.response.data.message);
+        }
+    };
+
+    return (
+        <>
+            <h2>Register</h2>
+            <form onSubmit={handleRegister}>
+                <label>Name:
+                    <input type='text' value={name} onChange={(e) => setName(e.target.value)} />
+                </label>
+                <br />
+                <label>Email:
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                </label>
+                <br />
+                <label>Password:
+                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                </label>
+                <br />
+                <button type="submit">Register</button>
+            </form>
+            <p>
+                Already have an account? <Link to="/login">Login here</Link>.
+            </p>
+        </>
+    )
+}
+export default Register
+
+
+------------------------------------------------------------------------------------------
